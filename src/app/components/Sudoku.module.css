@@ -1,0 +1,199 @@
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}
+
+.title {
+  text-align: center;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.rules {
+  margin: 15px 0;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.rules h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.rules ol {
+  padding-left: 20px;
+  margin: 10px 0;
+}
+
+.rules li {
+  margin-bottom: 5px;
+}
+
+.rules p {
+  margin: 10px 0 0;
+  font-style: italic;
+  color: #666;
+}
+
+.sudoku-board {
+  margin-top: 10px;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-rows: repeat(9, minmax(0, 1fr));
+  gap: 0;
+  background-color: #333;
+  border: 4px solid #555;
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 600px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 九宫格分隔线 */
+.cell:nth-child(9n+3),
+.cell:nth-child(9n+6) {
+  border-right: 3px solid #888;
+}
+
+.cell:nth-child(n+19):nth-child(-n+27),
+.cell:nth-child(n+46):nth-child(-n+54) {
+  border-bottom: 3px solid #888;
+}
+
+/* 单元格分隔线 */
+.cell {
+  border-right: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+}
+
+.cell:nth-child(9n) {
+  border-right: none;
+}
+
+.cell:nth-child(n+73) {
+  border-bottom: none;
+}
+
+
+.cell {
+  -webkit-aspect-ratio: 1; /* Safari */
+  aspect-ratio: 1;
+  display: -webkit-flex; /* Safari */
+  display: flex;
+  -webkit-align-items: center; /* Safari */
+  align-items: center;
+  -webkit-justify-content: center; /* Safari */
+  justify-content: center;
+  background-color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  -webkit-user-select: none; /* Safari */
+  user-select: none;
+  min-width: 0; /* 防止Safari中内容溢出 */
+  min-height: 0; /* 防止Safari中内容溢出 */
+}
+
+.cell.initial {
+  font-weight: bold;
+  color: #000;
+}
+
+.cell.invalid {
+  color: #ff0000 !important;
+  font-weight: bold !important;
+}
+
+/* 确保错误数字的红色在选中状态下仍然可见 */
+.cell.invalid.selected {
+  color: #ff0000 !important;
+  background-color: #1890ff !important;
+}
+
+.cell.selected {
+  background-color: #1890ff !important;
+  color: white !important;
+}
+
+.cell.highlighted {
+  background-color: #1890ff !important;
+  color: white !important;
+}
+
+.controls {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.difficulty button {
+  margin-right: 5px;
+}
+
+.number-pad {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 15px 0;
+  padding: 10px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+}
+
+.number-pad button {
+  padding: 10px 15px;
+  font-size: 1.2rem;
+  border: none;
+  border-radius: 4px;
+  background-color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 44px;
+  flex: 1;
+  max-width: 60px;
+}
+
+.number-pad button:hover {
+  background-color: #e0e0e0;
+}
+
+.number-pad button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #f0f0f0;
+}
+
+/* 隐藏滚动条但保持滚动功能 */
+.number-pad::-webkit-scrollbar {
+  display: none;
+}
