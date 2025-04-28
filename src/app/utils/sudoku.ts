@@ -1,5 +1,5 @@
 // 数独生成和验证工具函数
-export function generateSudoku(difficulty: 'easy' | 'medium' | 'hard' = 'easy'): { puzzle: number[][], solution: number[][] } {
+export function generateSudoku(difficulty: 'easy' | 'medium' | 'hard' = 'easy'): number[][] {
   // 生成完整解
   const solution = Array(9).fill(0).map(() => Array(9).fill(0));
   fillDiagonalBoxes(solution);
@@ -13,7 +13,7 @@ export function generateSudoku(difficulty: 'easy' | 'medium' | 'hard' = 'easy'):
                        difficulty === 'medium' ? 50 : 60;
   removeNumbers(puzzle, cellsToRemove);
   
-  return { puzzle, solution };
+  return puzzle;
 }
 
 function fillDiagonalBoxes(board: number[][]) {

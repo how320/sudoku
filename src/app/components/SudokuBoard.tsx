@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Cookies from 'js-cookie'
-import { generateSudoku } from '../utils/sudoku'
+import { generateSudoku, isBoardComplete, isValid } from '../utils/sudoku'
 import styles from './Sudoku.module.css'
 
 type CellProps = {
@@ -52,15 +52,12 @@ export default function SudokuBoard() {
     setIsRunning(true)
   }, [initialBoard])
 
-  const [solution, setSolution] = useState<number[][] | null>(null)
-
   const startNewGame = useCallback(() => {
     try {
-      const { puzzle: newBoard, solution: newSolution } = generateSudoku('easy')
+      const newBoard = generateSudoku('easy')
       const newInvalidCells = Array(9).fill(null).map(() => Array(9).fill(false))
       setBoard(newBoard.map(row => [...row]))
       setInitialBoard(newBoard.map(row => [...row]))
-      setSolution(newSolution)
       setInvalidCells(newInvalidCells)
       setSelectedCell(null)
       setTime(0)
@@ -101,12 +98,8 @@ export default function SudokuBoard() {
 
   // 检查游戏是否完成
   useEffect(() => {
-    if (board && invalidCells) {
-      const isComplete = board.every((row, r) => 
-        row.every((cell, c) => 
-          cell !== 0 && !invalidCells[r][c]
-        )
-      )
+    if (board) {
+      const isComplete = isBoardComplete(board)
       if (isComplete) {
         setIsRunning(false)
         setIsComplete(true)
@@ -115,7 +108,7 @@ export default function SudokuBoard() {
         setIsComplete(false)
       }
     }
-  }, [board, invalidCells, time])
+  }, [board, time])
 
   const handleCellClick = (row: number, col: number) => {
     setSelectedCell([row, col])
@@ -135,7 +128,7 @@ export default function SudokuBoard() {
   }
 
   const handleNumberInput = (num: number) => {
-    if (!selectedCell || !board || !initialBoard || !solution) return
+    if (!selectedCell || !board || !initialBoard) return
     
     const [row, col] = selectedCell
     
@@ -162,21 +155,19 @@ export default function SudokuBoard() {
     const newBoard = board.map(row => [...row])
     newBoard[row][col] = num
     
+    // 验证当前输入是否有效
+    const isValidInput = isValid(newBoard, row, col, num)
+    
     // 保留现有的错误标记
     const newInvalidCells = invalidCells!.map(row => [...row])
-    
-    // 使用保存的solution验证当前输入
-    const isInvalid = solution && newBoard[row][col] !== solution[row][col]
-    if (isInvalid) {
-      newInvalidCells[row][col] = true
-    }
+    newInvalidCells[row][col] = !isValidInput
     
     // 强制同步更新状态
     setInvalidCells(newInvalidCells)
     setBoard([...newBoard])
     
     // 如果错误，保持选中状态以便用户立即看到
-    if (isInvalid) {
+    if (!isValidInput) {
       setSelectedCell([row, col])
     }
     
