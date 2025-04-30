@@ -1,8 +1,9 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import Cookies from 'js-cookie'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { generateSudoku, isBoardComplete, isValid } from '../utils/sudoku'
 import styles from './Sudoku.module.css'
+import { supabase } from '../../lib/supabase'
+import { useSession } from '@supabase/auth-helpers-react'
 
 type CellProps = {
   value: number
@@ -29,28 +30,21 @@ function Cell({ value, isInitial, isInvalid, onClick, isSelected, isHighlighted 
   )
 }
 
-export default function SudokuBoard() {
+type SudokuBoardProps = {
+  onGameComplete?: () => void
+}
+
+export default function SudokuBoard({ onGameComplete }: SudokuBoardProps) {
+  const session = useSession()
   const [board, setBoard] = useState<number[][] | null>(null)
   const [initialBoard, setInitialBoard] = useState<number[][] | null>(null)
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null)
   const [invalidCells, setInvalidCells] = useState<boolean[][] | null>(null)
   const [highlightedCells, setHighlightedCells] = useState<[number, number][]>([])
+  const [isComplete, setIsComplete] = useState(false)
   const [time, setTime] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
-  const [bestTime, setBestTime] = useState<number | null>(() => {
-    const savedTime = Cookies.get('sudokuBestTime')
-    return savedTime ? parseInt(savedTime) : null
-  })
-  const [isComplete, setIsComplete] = useState(false)
-  const resetGame = useCallback(() => {
-    if (!initialBoard) return
-    setBoard(initialBoard.map(row => [...row]))
-    setInvalidCells(Array(9).fill(null).map(() => Array(9).fill(false)))
-    setSelectedCell(null)
-    setIsComplete(false)
-    setTime(0)
-    setIsRunning(true)
-  }, [initialBoard])
+  const [bestTime, setBestTime] = useState<number | null>(null)
 
   const startNewGame = useCallback(() => {
     try {
@@ -86,29 +80,86 @@ export default function SudokuBoard() {
     }
   }, [isRunning])
 
+
   useEffect(() => {
+    const loadBestTime = async () => {
+      if (session?.user?.id) {
+        // 查询数据库获取最佳成绩
+        const { data, error } = await supabase
+          .from('game_history')
+          .select('time_seconds')
+          .eq('user_id', session.user.id)
+          .eq('is_completed', true)
+          .order('time_seconds', { ascending: true })
+          .limit(1)
+          
+        if (!error && data && data.length > 0) {
+          setBestTime(data[0].time_seconds)
+        }
+      } else {
+        // 从cookie获取最佳成绩
+        const cookieTime = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('best_time='))
+          ?.split('=')[1]
+        
+        if (cookieTime) {
+          setBestTime(parseInt(cookieTime))
+        }
+      }
+    }
+
     try {
       startNewGame()
       setTime(0)
       setIsRunning(true)
+      loadBestTime()
     } catch (error) {
       console.error('初始化数独板失败:', error)
     }
-  }, [startNewGame])
+  }, [startNewGame, session])
 
   // 检查游戏是否完成
+  const prevIsComplete = useRef(false)
   useEffect(() => {
     if (board) {
       const isComplete = isBoardComplete(board)
-      if (isComplete) {
+      if (isComplete && !prevIsComplete.current) {  // 只在从未完成变为完成时执行
+        prevIsComplete.current = true
         setIsRunning(false)
         setIsComplete(true)
-        setBestTime(prev => prev === null ? time : Math.min(prev, time))
+        // 保存游戏记录时会自动更新最佳成绩
+        if (session?.user?.id) {
+          supabase
+            .from('game_history')
+            .insert({
+              user_id: session.user.id,
+              difficulty: 'easy', // 暂时固定为easy
+              time_seconds: time,
+              is_completed: true
+            })
+            .then(({ error }) => {
+              if (error) {
+                console.error('保存游戏记录失败:', error)
+              } else {
+                // 更新最佳成绩
+                if (!bestTime || time < bestTime) {
+                  setBestTime(time)
+                  if (!session?.user?.id) {
+                    // 未登录用户保存到cookie
+                    document.cookie = `best_time=${time}; max-age=31536000; path=/`
+                  }
+                }
+              }
+              onGameComplete?.()
+            })
+        }
       } else {
         setIsComplete(false)
+        prevIsComplete.current = false
       }
     }
-  }, [board, time])
+  }, [board, time, session, onGameComplete, bestTime])
 
   const handleCellClick = (row: number, col: number) => {
     setSelectedCell([row, col])
@@ -215,13 +266,28 @@ export default function SudokuBoard() {
   return (
     <div className={styles['sudoku-board']} style={{ border: '1px solid red' }}>
       <div className={styles.controls}>
-        <button onClick={startNewGame}>新游戏</button>
-        <button onClick={resetGame}>重开</button>
-        <div className={styles.timer}>
-          用时: {Math.floor(time/60)}分{time%60}秒
+        <button 
+          onClick={startNewGame}
+          style={{ backgroundColor: '#1e90ff', color: 'white', padding: '8px 16px', borderRadius: '4px' }}
+        >
+          新游戏
+        </button>
+        <button 
+          onClick={() => initialBoard && setBoard(initialBoard.map(row => [...row]))}
+          style={{ backgroundColor: '#ff8c00', color: 'white', padding: '8px 16px', borderRadius: '4px', marginLeft: '10px' }}
+        >
+          重开
+        </button>
+        <div style={{ 
+          marginLeft: '20px',
+          fontSize: '1.2rem',
+          fontWeight: 'bold',
+          color: '#333'
+        }}>
+          用时: {Math.floor(time/60)}:{time%60 < 10 ? '0' + time%60 : time%60}
           {bestTime && (
-            <span className={styles.bestTime}>
-              最佳: {Math.floor(bestTime/60)}分{bestTime%60}秒
+            <span style={{ marginLeft: '10px' }}>
+              最佳: {Math.floor(bestTime/60)}:{bestTime%60 < 10 ? '0' + bestTime%60 : bestTime%60}
             </span>
           )}
         </div>
@@ -229,7 +295,7 @@ export default function SudokuBoard() {
       <div className={styles['number-pad']}>
         {[1,2,3,4,5,6,7,8,9].map(num => (
           <button 
-            key={num} 
+            key={num}
             onClick={() => selectedCell && handleNumberInput(num)}
             disabled={!selectedCell || isNumberComplete(num)}
             style={isNumberComplete(num) ? { opacity: 0.5 } : {}}
@@ -238,6 +304,7 @@ export default function SudokuBoard() {
           </button>
         ))}
         <button 
+          className={styles.clear}
           onClick={() => selectedCell && handleNumberInput(0)}
           disabled={!selectedCell}
         >
