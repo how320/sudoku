@@ -7,8 +7,13 @@ interface GameHistoryProps {
 
 export default function GameHistory({}: GameHistoryProps) {
   return (
-    <Link href="history">
-      查看完整游戏历史记录
-    </Link>
+    <div style={{ display: 'flex', gap: '10px' }}>
+      <Link href="history">
+        查看完整游戏历史记录
+      </Link>
+      <Link href="game">
+        返回游戏
+      </Link>
+    </div>
   );
 }

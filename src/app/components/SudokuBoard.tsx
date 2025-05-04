@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import DifficultyDialog from './DifficultyDialog'
 import { generateSudoku, isBoardComplete, isValid } from '../utils/sudoku'
 import styles from './Sudoku.module.css'
 import { supabase } from '../../lib/supabase'
@@ -12,9 +13,10 @@ type CellProps = {
   onClick: () => void
   isSelected: boolean
   isHighlighted: boolean
+  isRunning: boolean
 }
 
-function Cell({ value, isInitial, isInvalid, onClick, isSelected, isHighlighted }: CellProps) {
+function Cell({ value, isInitial, isInvalid, onClick, isSelected, isHighlighted, isRunning }: CellProps) {
   return (
     <div 
       className={`${styles.cell} 
@@ -22,8 +24,9 @@ function Cell({ value, isInitial, isInvalid, onClick, isSelected, isHighlighted 
         ${isInvalid ? styles.invalid : ''}
         ${isSelected ? styles.selected : ''}
         ${isHighlighted ? styles.highlighted : ''}
+        ${!isRunning ? styles.disabled : ''}
       `}
-      onClick={onClick}
+      onClick={!isRunning ? undefined : onClick}
     >
       {value !== 0 ? value : ''}
     </div>
@@ -44,16 +47,21 @@ export default function SudokuBoard({ onGameComplete }: SudokuBoardProps) {
   const [isComplete, setIsComplete] = useState(false)
   const [time, setTime] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
+  const [showPauseOverlay, setShowPauseOverlay] = useState(false)
   const [bestTime, setBestTime] = useState<number | null>(null)
 
-  const startNewGame = useCallback(() => {
+  const [showDifficultyDialog, setShowDifficultyDialog] = useState(false)
+  const [currentDifficulty, setCurrentDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy')
+
+  const startNewGame = useCallback((difficulty: 'easy' | 'medium' | 'hard' = 'easy') => {
     try {
-      const newBoard = generateSudoku('easy')
+      const newBoard = generateSudoku(difficulty)
       const newInvalidCells = Array(9).fill(null).map(() => Array(9).fill(false))
       setBoard(newBoard.map(row => [...row]))
       setInitialBoard(newBoard.map(row => [...row]))
       setInvalidCells(newInvalidCells)
       setSelectedCell(null)
+      setHighlightedCells([])
       setTime(0)
       setIsRunning(true)
       setIsComplete(false)
@@ -66,6 +74,93 @@ export default function SudokuBoard({ onGameComplete }: SudokuBoardProps) {
     }
   }, [])
 
+  // 保存游戏状态到本地存储
+  useEffect(() => {
+    const gameState = {
+      board,
+      initialBoard,
+      time,
+      isRunning,
+      showPauseOverlay,
+      selectedCell,
+      highlightedCells,
+      invalidCells
+    }
+    localStorage.setItem('sudokuGameState', JSON.stringify(gameState))
+  }, [board, initialBoard, time, isRunning, showPauseOverlay, selectedCell, highlightedCells, invalidCells])
+
+  // 恢复游戏状态
+  useEffect(() => {
+    const savedState = localStorage.getItem('sudokuGameState')
+    if (savedState) {
+      try {
+        const {
+          board: savedBoard,
+          initialBoard: savedInitialBoard,
+          time: savedTime,
+          isRunning: savedIsRunning,
+          showPauseOverlay: savedShowPauseOverlay,
+          selectedCell: savedSelectedCell,
+          highlightedCells: savedHighlightedCells,
+          invalidCells: savedInvalidCells
+        } = JSON.parse(savedState)
+
+        // 验证恢复的状态是否有效
+        if (savedBoard && savedInitialBoard && savedInvalidCells) {
+          setBoard(savedBoard)
+          setInitialBoard(savedInitialBoard)
+          setTime(savedTime)
+          setIsRunning(savedIsRunning)
+          setShowPauseOverlay(savedShowPauseOverlay)
+          setSelectedCell(savedSelectedCell)
+          setHighlightedCells(savedHighlightedCells)
+          setInvalidCells(savedInvalidCells)
+          return
+        }
+      } catch (e) {
+        console.error('恢复游戏状态失败:', e)
+      }
+    }
+    // 如果没有有效保存状态，则开始新游戏
+    startNewGame()
+  }, [startNewGame])
+
+  // 监听页面可见性变化
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // 页面隐藏时暂停游戏并保存状态
+        setIsRunning(false)
+        setShowPauseOverlay(true)
+        const gameState = {
+          board,
+          initialBoard,
+          time,
+          isRunning: false, // 强制设置为暂停状态
+          showPauseOverlay: true, // 强制显示暂停界面
+          selectedCell,
+          highlightedCells,
+          invalidCells
+        }
+        localStorage.setItem('sudokuGameState', JSON.stringify(gameState))
+      } else {
+        // 页面恢复时检查是否需要保持暂停状态
+        const savedState = localStorage.getItem('sudokuGameState')
+        if (savedState) {
+          const { isRunning: savedIsRunning, showPauseOverlay: savedShowPauseOverlay } = JSON.parse(savedState)
+          setIsRunning(savedIsRunning)
+          setShowPauseOverlay(savedShowPauseOverlay)
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [board, initialBoard, time, selectedCell, highlightedCells, invalidCells])
+
+  // 计时器
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
       
@@ -82,42 +177,78 @@ export default function SudokuBoard({ onGameComplete }: SudokuBoardProps) {
 
 
   useEffect(() => {
-    const loadBestTime = async () => {
-      if (session?.user?.id) {
-        // 查询数据库获取最佳成绩
-        const { data, error } = await supabase
-          .from('game_history')
-          .select('time_seconds')
-          .eq('user_id', session.user.id)
-          .eq('is_completed', true)
-          .order('time_seconds', { ascending: true })
-          .limit(1)
-          
-        if (!error && data && data.length > 0) {
-          setBestTime(data[0].time_seconds)
-        }
+  const loadBestTime = async (difficulty: string) => {
+    if (session?.user?.id) {
+      // 查询数据库获取当前难度的最佳成绩
+      const { data, error } = await supabase
+        .from('game_history')
+        .select('time_seconds')
+        .eq('user_id', session.user.id)
+        .eq('is_completed', true)
+        .eq('difficulty', difficulty)
+        .order('time_seconds', { ascending: true })
+        .limit(1)
+        
+      if (!error && data && data.length > 0) {
+        setBestTime(data[0].time_seconds)
       } else {
-        // 从cookie获取最佳成绩
-        const cookieTime = document.cookie
+        setBestTime(null)
+      }
+    } else {
+      // 从cookie获取最佳成绩
+      console.log('当前cookie:', document.cookie);
+      const cookieTime = document.cookie
+        .split('; ')
+        .find(row => row.startsWith(`best_time_${difficulty}=`))
+        ?.split('=')[1];
+      
+      console.log(`查找best_time_${difficulty}结果:`, cookieTime);
+      
+      if (cookieTime) {
+        const time = parseInt(cookieTime);
+        console.log('从cookie读取到最佳用时:', time);
+        setBestTime(time);
+      } else {
+        // 检查旧格式的cookie（不带难度）
+        const legacyCookie = document.cookie
           .split('; ')
           .find(row => row.startsWith('best_time='))
-          ?.split('=')[1]
-        
-        if (cookieTime) {
-          setBestTime(parseInt(cookieTime))
-        }
+          ?.split('=')[1];
+        console.log('查找旧格式best_time结果:', legacyCookie);
+        setBestTime(legacyCookie ? parseInt(legacyCookie) : null);
+      }
+    }
+  }
+
+    const savedState = localStorage.getItem('sudokuGameState')
+    if (savedState) {
+      const {
+        board: savedBoard,
+        initialBoard: savedInitialBoard,
+        time: savedTime,
+        isRunning: savedIsRunning,
+        showPauseOverlay: savedShowPauseOverlay
+      } = JSON.parse(savedState)
+
+      // 恢复保存的游戏状态
+      setBoard(savedBoard)
+      setInitialBoard(savedInitialBoard)
+      setTime(savedTime)
+      setIsRunning(savedIsRunning)
+      setShowPauseOverlay(savedShowPauseOverlay)
+    } else {
+      // 没有保存状态时才开始新游戏
+      try {
+        startNewGame()
+        setTime(0)
+        setIsRunning(true)
+      } catch (error) {
+        console.error('初始化数独板失败:', error)
       }
     }
 
-    try {
-      startNewGame()
-      setTime(0)
-      setIsRunning(true)
-      loadBestTime()
-    } catch (error) {
-      console.error('初始化数独板失败:', error)
-    }
-  }, [startNewGame, session])
+    loadBestTime(currentDifficulty)
+  }, [startNewGame, session, currentDifficulty])
 
   // 检查游戏是否完成
   const prevIsComplete = useRef(false)
@@ -128,38 +259,41 @@ export default function SudokuBoard({ onGameComplete }: SudokuBoardProps) {
         prevIsComplete.current = true
         setIsRunning(false)
         setIsComplete(true)
-        // 保存游戏记录时会自动更新最佳成绩
-        if (session?.user?.id) {
-          supabase
-            .from('game_history')
-            .insert({
-              user_id: session.user.id,
-              difficulty: 'easy', // 暂时固定为easy
-              time_seconds: time,
-              is_completed: true
-            })
-            .then(({ error }) => {
-              if (error) {
-                console.error('保存游戏记录失败:', error)
-              } else {
-                // 更新最佳成绩
-                if (!bestTime || time < bestTime) {
-                  setBestTime(time)
-                  if (!session?.user?.id) {
-                    // 未登录用户保存到cookie
-                    document.cookie = `best_time=${time}; max-age=31536000; path=/`
-                  }
+        // 
+        // 更新最佳成绩
+        if (!bestTime || time < bestTime) {
+          setBestTime(time);
+          console.log('设置新的最佳用时:', time);
+          
+          if (session?.user?.id) {
+            // 登录用户保存到数据库
+            supabase
+              .from('game_history')
+              .insert({
+                user_id: session.user.id,
+                difficulty: currentDifficulty,
+                time_seconds: time,
+                is_completed: true
+              })
+              .then(({ error }) => {
+                if (error) {
+                  console.error('保存游戏记录失败:', error);
                 }
-              }
-              onGameComplete?.()
-            })
+              });
+          } else {
+            // 匿名用户保存到cookie
+            const cookieValue = `best_time_${currentDifficulty}=${time}; max-age=31536000; path=/; SameSite=Lax`;
+            console.log('设置匿名用户cookie:', cookieValue);
+            document.cookie = cookieValue;
+          }
         }
+        onGameComplete?.();
       } else {
         setIsComplete(false)
         prevIsComplete.current = false
       }
     }
-  }, [board, time, session, onGameComplete, bestTime])
+  }, [board, time, session, onGameComplete, bestTime, currentDifficulty])
 
   const handleCellClick = (row: number, col: number) => {
     setSelectedCell([row, col])
@@ -177,6 +311,16 @@ export default function SudokuBoard({ onGameComplete }: SudokuBoardProps) {
       setHighlightedCells([])
     }
   }
+
+  const resetGame = useCallback(() => {
+    if (!initialBoard) return
+    setBoard(initialBoard.map(row => [...row]))
+    setInvalidCells(Array(9).fill(null).map(() => Array(9).fill(false)))
+    setSelectedCell(null)
+    setHighlightedCells([])
+    setTime(0) // 重置计时器
+    setIsRunning(true) // 自动开始计时
+  }, [initialBoard])
 
   const handleNumberInput = (num: number) => {
     if (!selectedCell || !board || !initialBoard) return
@@ -259,37 +403,93 @@ export default function SudokuBoard({ onGameComplete }: SudokuBoardProps) {
     return true
   }
 
+  // 初始状态处理
+  useEffect(() => {
+    // 确保初始状态被正确设置
+    if (!board || !initialBoard || !invalidCells) {
+      startNewGame();
+    }
+  }, [board, initialBoard, invalidCells, startNewGame]);
+
+  // 如果状态仍未准备好，显示加载状态
   if (!board || !initialBoard || !invalidCells) {
-    return <div className={styles['sudoku-board']}>加载中...</div>
+    return (
+      <div className={styles['sudoku-board']}>
+        <div className={styles.loadingContainer}>
+          <div className={styles.loadingSpinner}></div>
+          <p>游戏初始化中...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className={styles['sudoku-board']} style={{ border: '1px solid red' }}>
       <div className={styles.controls}>
         <button 
-          onClick={startNewGame}
+          onClick={() => setShowDifficultyDialog(true)}
           style={{ backgroundColor: '#1e90ff', color: 'white', padding: '8px 16px', borderRadius: '4px' }}
         >
           新游戏
         </button>
+        {showDifficultyDialog && (
+          <DifficultyDialog 
+            onClose={() => setShowDifficultyDialog(false)}
+            onDifficultySelected={(difficulty) => {
+              setCurrentDifficulty(difficulty)
+              startNewGame(difficulty)
+            }}
+          />
+        )}
         <button 
-          onClick={() => initialBoard && setBoard(initialBoard.map(row => [...row]))}
+          onClick={resetGame}
           style={{ backgroundColor: '#ff8c00', color: 'white', padding: '8px 16px', borderRadius: '4px', marginLeft: '10px' }}
         >
           重开
         </button>
-        <div style={{ 
-          marginLeft: '20px',
-          fontSize: '1.2rem',
-          fontWeight: 'bold',
-          color: '#333'
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{
+            padding: '6px 12px',
+            backgroundColor: '#f0f0f0',
+            borderRadius: '4px',
+            fontSize: '0.9rem'
+          }}>
+            难度: {currentDifficulty === 'easy' ? '简单' : 
+                  currentDifficulty === 'medium' ? '中等' : '困难'}
+          </span>
+          <button 
+            onClick={() => {
+              if (isComplete) return
+              if (isRunning) {
+                setShowPauseOverlay(true)
+                setIsRunning(false)
+              } else {
+                setShowPauseOverlay(false)
+                setIsRunning(true)
+              }
+            }}
+            disabled={isComplete}
+            style={{ 
+              backgroundColor: isComplete ? '#cccccc' : (isRunning ? '#ff6347' : '#32cd32'),
+              color: 'white', 
+              padding: '8px 16px', 
+              borderRadius: '4px'
+            }}
+          >
+            {isRunning ? '暂停' : '继续'}
+          </button>
+          <div style={{ 
+            fontSize: '1.2rem',
+            fontWeight: 'bold',
+            color: '#333'
+          }}>
           用时: {Math.floor(time/60)}:{time%60 < 10 ? '0' + time%60 : time%60}
           {bestTime && (
             <span style={{ marginLeft: '10px' }}>
               最佳: {Math.floor(bestTime/60)}:{bestTime%60 < 10 ? '0' + bestTime%60 : bestTime%60}
             </span>
           )}
+          </div>
         </div>
       </div>
       <div className={styles['number-pad']}>
@@ -329,10 +529,27 @@ export default function SudokuBoard({ onGameComplete }: SudokuBoardProps) {
               onClick={() => handleCellClick(rowIndex, colIndex)}
               isSelected={selectedCell?.toString() === [rowIndex, colIndex].toString()}
               isHighlighted={highlightedCells.some(([r, c]) => r === rowIndex && c === colIndex)}
+              isRunning={isRunning}
             />
           );
         })}
       </div>
+      {showPauseOverlay && (
+        <div className={styles.pauseOverlay}>
+          <div className={styles.pauseContent}>
+            <h2>休息一下</h2>
+            <button 
+              onClick={() => {
+                setShowPauseOverlay(false)
+                setIsRunning(true)
+              }}
+              className={styles.resumeButton}
+            >
+              继续游戏
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

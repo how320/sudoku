@@ -46,7 +46,19 @@ export default function HistoryPage() {
 
   if (!session) return <div className={styles.empty}>请登录查看游戏记录</div>
   if (loading) return <div className={styles.loading}>加载中...</div>
-  if (history.length === 0) return <div className={styles.empty}>暂无游戏记录</div>
+  if (history.length === 0) return (
+    <div className={styles.empty}>
+      <div>暂无游戏记录</div>
+      <div className="mt-4">
+        <Link 
+          href="/game" 
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          返回游戏
+        </Link>
+      </div>
+    </div>
+  )
 
   return (
     <div className={styles.history}>
@@ -58,16 +70,47 @@ export default function HistoryPage() {
           返回游戏
         </Link>
       </div>
-      <h3>游戏历史记录</h3>
-      <ul>
-        {history.map(game => (
-          <li key={game.id} className={styles.historyItem}>
-            <span>难度: {game.difficulty}</span>
-            <span>用时: {Math.floor(game.time_seconds/60)}分{game.time_seconds%60}秒</span>
-            <span>完成时间: {new Date(game.completed_at).toLocaleString()}</span>
-          </li>
-        ))}
-      </ul>
+      <div className={styles.historyColumns}>
+        <div className={styles.historyColumn}>
+          <h4>简单难度</h4>
+          <ul>
+            {history
+              .filter(game => game.difficulty === 'easy')
+              .map(game => (
+                <li key={game.id} className={styles.historyItem}>
+                  <span>用时: {Math.floor(game.time_seconds/60)}分{game.time_seconds%60}秒</span>
+                  <span>完成时间: {new Date(game.completed_at).toLocaleString()}</span>
+                </li>
+              ))}
+          </ul>
+        </div>
+        <div className={styles.historyColumn}>
+          <h4>中等难度</h4>
+          <ul>
+            {history
+              .filter(game => game.difficulty === 'medium')
+              .map(game => (
+                <li key={game.id} className={styles.historyItem}>
+                  <span>用时: {Math.floor(game.time_seconds/60)}分{game.time_seconds%60}秒</span>
+                  <span>完成时间: {new Date(game.completed_at).toLocaleString()}</span>
+                </li>
+              ))}
+          </ul>
+        </div>
+        <div className={styles.historyColumn}>
+          <h4>困难难度</h4>
+          <ul>
+            {history
+              .filter(game => game.difficulty === 'hard')
+              .map(game => (
+                <li key={game.id} className={styles.historyItem}>
+                  <span>用时: {Math.floor(game.time_seconds/60)}分{game.time_seconds%60}秒</span>
+                  <span>完成时间: {new Date(game.completed_at).toLocaleString()}</span>
+                </li>
+              ))}
+          </ul>
+        </div>
+      </div>
     </div>
   )
 }
